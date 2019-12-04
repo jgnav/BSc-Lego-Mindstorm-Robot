@@ -11,10 +11,11 @@ class robot:
         self._left_motor = Motor(left_motor)
         self._right_motor = Motor(right_motor)
         self._both_motors = MoveTank(left_motor, right_motor)
+        self._sonar = UltrasonicSensor(sonar)
+        self._color = ColorSensor(color_sensor)
+        self._battery = PowerSupply()
         self._r = wheel_diameter
         self._d = axle_distance
-        self._sonar = UltrasonicSensor(sonar)
-        self._color_sensor = ColorSensor(color_sensor)
 
     def __SpeedRadPS(self, value):
         return SpeedRPS(value/(2*pi))
@@ -74,79 +75,46 @@ class robot:
     def angular_speed(self):
         return ((self.rightMotor_speed-self.leftMotor_speed)*self._r)/self._d
 
-"""
     #Batería
     @property
-    def battery_voltage(self): #
-        return PowerSupply.measured_volts()
+    def battery_voltage(self):
+        return self._battery.measured_volts
 
     @property
-    def battery_current(self): #
-        return PowerSupply.measured_amps()
+    def battery_current(self):
+        return self._battery.measured_amps
 
     #Sensor sonar
     @property
-    def distance_sonar(self): #
-        return (self.sonar.distance_centimeters() / 100)
+    def distance_sonar(self):
+        return (self._sonar.distance_centimeters / 100)
 
     @property
-    def distance_centimeters_ping(self): #
-        return self.sonar.distance_centimeters_ping()
-
-    @property
-    def other_sensor_present(self): #
-        return self.sonar.other_sensor_present()
+    def other_sensor_present(self):
+        return self._sonar.other_sensor_present
 
     #Sensor de color
-    @property
-    def color(self): #
-        return self.color_sensor.color()
+    def calibrate_white(self):
+        self._color.calibrate_white()
 
     @property
-    def color_name(self): #
-        return self.color_sensor.color_name()
+    def color(self):
+        return self._color.color
 
     @property
-    def ambient(self): #
-        return self.color_sensor.ambient_light_intensity()
+    def color_name(self):
+        return self._color.color_name
 
     @property
-    def reflection(self): #
-        return self.color_sensor.reflected_light_intensity()
+    def ambient(self):
+        return self._color.ambient_light_intensity
 
     @property
-    def raw(self): #
-        return self.color_sensor.raw()
+    def reflection(self):
+        return self._color.reflected_light_intensity
 
     @property
-    def rgb(self): #
-        return self.color_sensor.rgb()
+    def rgb(self):
+        return self._color.rgb
 
-    @property
-    def calibrate_white(self): #
-        return self.color_sensor.calibrate_white()
 
-    @property
-    def lab(self): #
-        return self.color_sensor.lab()
-
-    @property
-    def hsv(self): #
-        return self.color_sensor.hsv()
-
-    @property
-    def hls(self): #
-        return self.color_sensor.hls()
-
-    @property
-    def red(self): #
-        return self.color_sensor.red()
-
-    @property
-    def green(self):  #
-        return self.color_sensor.green()
-
-    @property
-    def blue(self): #
-        return self.color_sensor.blue()
-"""

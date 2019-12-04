@@ -8,29 +8,10 @@ from time import sleep
 
 r = robot(OUTPUT_B, OUTPUT_A, INPUT_1, INPUT_4, 0.056, 0.114)
 
-temp = StopWatch()
-
-t = 5000
-
 f=open("puntos.txt","w")
 
-temp.reset()
-temp.start()
+r.calibrate_white()
+f.write(str(r.color)+" "+str(r.color_name)+" "+str(r.ambient)+" "+str(r.reflection)+" "+str(r.rgb)+"\n")
+sleep(0.01)
 
-r.rightMotor_dc = 50
-r.leftMotor_dc = -50
-
-sleep(1)
-
-r.stop()
-
-sleep(1)
-
-r.rightMotor_dc = 50
-r.leftMotor_dc = -50
-
-sleep(1)
-
-r.stop
-temp.stop()
 f.close()
