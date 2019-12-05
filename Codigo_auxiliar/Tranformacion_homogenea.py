@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 def rotation_matrix(axisA, axisB):
     bRa = np.array([[(axisA[0] @ axisB[0]), (axisA[1] @ axisB[0]), (axisA[2] @ axisB[0])],
@@ -32,17 +33,17 @@ def point_translation(aP, bPa0, axisA, axisB):
 
 
 #PRUEBA:
-axisA = np.array([[1, 0, 0],
-                  [0, 1, 0],
+axisA = np.array([[1, 1, 0],
+                  [0, -1, 0],
                   [0, 0, 1]])
 
 axisB = np.array([[1, 2, 3],
                   [4, 5, 6],
                   [7, 8, 9]])
 
-bPa0 = np.array([7, 8, 9])
+bPa0 = np.array([0, 0, 0])
 
-aP = np.array([5, 5, 5])
+aP = np.array([1, 1, 1])
 
 bRa = rotation_matrix(axisA, axisB)
 
@@ -55,5 +56,3 @@ print(bTa)
 bP = point_translation(aP, bPa0, axisA, axisB)
 
 print(bP)
-
-
