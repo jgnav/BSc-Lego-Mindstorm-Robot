@@ -129,39 +129,32 @@ class odometria(movimiento):
         self._perimetro_rueda = 2*pi*self._radio
         self._tiempo_espera = 0.01
         self._posicion_robot = [0.0, 0.0, 0.0, 0.0]
+        self._odometria_activa = False
+        self._escribir_fichero_activo = False
         self._f = None
 
-        self._odometria_activa = False
-        self._fin_odometria = True
-        self._escribir_fichero_activo = False
-        self._fin_escribir_fichero = True
-
-    def empezar_odometria(self, posicion, modo):
+    def empezar_odometria(self, posicion):
         self._posicion_robot = posicion
 
         def _hilo_odometria():
             izquierda_anterior = 0.0
             derecha_anterior = 0.0
-            tiempo_anterior = time()
 
             while self._odometria_activa:
 
                 izquierda_actual = self._motor_izquierdo.position
                 derecha_actual = self._motor_derecho.position
-                tiempo_actual = time()
 
                 ticks_izquierda = izquierda_actual - izquierda_anterior
                 ticks_derecha = derecha_actual - derecha_anterior
-                h = tiempo_actual - tiempo_anterior
 
-                if not ticks_izquierda and not ticks_derecha or not h:
+                if not ticks_izquierda and not ticks_derecha:
                     if self._tiempo_espera:
                         sleep(self._tiempo_espera)
                     continue
 
                 izquierda_anterior = izquierda_actual
                 derecha_anterior = derecha_actual
-                tiempo_anterior = tiempo_actual
 
                 rotacion_izquierda = float(ticks_izquierda / self._motor_izquierdo.count_per_rot)
                 rotacion_derecha = float(ticks_derecha / self._motor_derecho.count_per_rot)
@@ -172,55 +165,20 @@ class odometria(movimiento):
                 distancia_total = (distancia_izquierda + distancia_derecha) / 2.0
                 rotacion_total = (distancia_derecha - distancia_izquierda) / self._sruedas
 
-                v = distancia_total / h
-
-                if(modo == "euler"){
-
-                    #Euler
-                    self._posicion_robot[0] += distancia_total * cos(self._posicion_robot[3])
-                    self._posicion_robot[1] += distancia_total * sin(self._posicion_robot[3])
-                    self._posicion_robot[3] += rotacion_total
-
-                }elif(modo == "RK_2"){
-
-                    #Runge-Kutta de segundo orden
-                    self._posicion_robot[0] += distancia_total * cos(self._posicion_robot[3] + (rotacion_total/2))
-                    self._posicion_robot[1] += distancia_total * sin(self._posicion_robot[3] + (rotacion_total/2))
-                    self._posicion_robot[3] += rotacion_total
-
-                }elif(modo == "RK_4"){
-
-                    #Runge-Kutta de cuarto orden
-                    k01 = v * cos(self._posicion_robot[3])
-                    k02 = (v + 0.5*h) * cos(self._posicion_robot[3] + 0.5*k01*h)
-                    k03 = (v + 0.5*h) * cos(self._posicion_robot[3] + 0.5*k02*h)
-                    k04 = (v + h) * cos(self._posicion_robot[3] + k03*h)
-
-                    k11 = v * sin(self._posicion_robot[3])
-                    k12 = (v + 0.5*h) * sin(self._posicion_robot[3] + 0.5*k11*h)
-                    k13 = (v + 0.5*h) * sin(self._posicion_robot[3] + 0.5*k12*h)
-                    k14 = (v + h) * sin(self._posicion_robot[3] + k13*h)
-
-                    self._posicion_robot[0] += (1/6)*h*(k01 + 2*(k02 + k03) + k04)
-                    self._posicion_robot[1] += (1/6)*h*(k11 + 2*(k12 + k13) + k14)
-                    self._posicion_robot[3] += rotacion_total
-                }
-
+                self._posicion_robot[0] += distancia_total * cos(self._posicion_robot[3] + (rotacion_total/2))
+                self._posicion_robot[1] += distancia_total * sin(self._posicion_robot[3] + (rotacion_total/2))
+                self._posicion_robot[3] += rotacion_total
 
                 if self._tiempo_espera:
                     sleep(self._tiempo_espera)
 
-            self._fin_odometria = True
-
         self._odometria_activa = True
-        self._fin_odometria = False
         self._id_hilo_odometria = Thread(target = _hilo_odometria)
         self._id_hilo_odometria.start()
 
     def parar_odometria(self):
         self._odometria_activa = False
-        if not self._fin_odometria:
-            self._id_hilo_odometria.join(timeout=None)
+        self._id_hilo_odometria.join(timeout=None)
 
     @property
     def posicion(self):
@@ -236,16 +194,22 @@ class odometria(movimiento):
                 i = i + 1
                 sleep(self._tiempo_espera)
 
-            self._fin_escribir_fichero = True
-
         self._escribir_fichero_activo = True
-        self._fin_escribir_fichero = False
         self._id_hilo_fichero = Thread(target = _hilo_fichero)
         self._id_hilo_fichero.start()
 
     def parar_posicion_fichero(self):
         self._escribir_fichero_activo = False
-        if not self._fin_escribir_fichero:
-            self._id_hilo_fichero.join(timeout=None)
+        self._id_hilo_fichero.join(timeout=None)
         self._f.close()
+
+
+
+
+
+
+
+
+
+
 

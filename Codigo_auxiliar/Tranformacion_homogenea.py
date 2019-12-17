@@ -1,5 +1,5 @@
 import numpy as np
-import math
+from math import pi, sin, cos, atan
 
 def rotation_matrix(axisA, axisB):
     bRa = np.array([[(axisA[0] @ axisB[0]), (axisA[1] @ axisB[0]), (axisA[2] @ axisB[0])],
@@ -32,11 +32,75 @@ def point_translation(aP, bPa0, axisA, axisB):
     return bP[:3]
 
 
+"""
+    def _ejes_a_theta(self, ejes):
+        if ((ejes[0][1] > 0) and (ejes[1][1] >= 0)):
+
+            theta = atan(ejes[1][1]/ejes[0][1])
+
+        elif ((ejes[0][1] < 0) and (ejes[1][1] > 0)):
+
+            theta = atan(ejes[1][1]/ejes[0][1]) + pi
+
+        elif ((ejes[0][1] < 0) and (ejes[1][1] <= 0)):
+
+            theta = atan(ejes[1][1]/ejes[0][1]) + pi
+
+        elif ((ejes[0][1] > 0) and (ejes[1][1] < 0)):
+
+            theta = 2*pi + atan(ejes[1][1]/ejes[0][1])
+
+        elif ((ejes[0][1] == 0) and (ejes[1][1] > 0)):
+
+            theta = pi/2
+
+        elif ((ejes[0][1] == 0) and (ejes[1][1] < 0)):
+
+            theta = (3/2)*pi
+
+        return theta
+
+    def _theta_a_ejes(self, theta):
+        ejes = np.array([[1.0, 0.0, 0.0],
+                         [0.0, 1.0, 0.0],
+                         [0.0, 0.0, 1.0]])
+
+        if ((theta > 0) and (theta < pi/2)):
+
+            ejes[0][0] = 1
+            ejes[0][1] = 1
+            ejes[1][0] = 1
+            ejes[1][1] = 1
+
+        elif ((theta > pi/2) and (theta < pi)):
+
+            ejes[0][0] = 1
+            ejes[0][1] = 1
+            ejes[1][0] = 1
+            ejes[1][1] = 1
+
+        elif ((theta > pi) and (theta < (3/2)*pi)):
+
+            ejes[0][0] = 1
+            ejes[0][1] = 1
+            ejes[1][0] = 1
+            ejes[1][1] = 1
+
+        elif ((theta > (3/2)*pi) and (theta < 2*pi)):
+
+            ejes[0][0] = 1
+            ejes[0][1] = 1
+            ejes[1][0] = 1
+            ejes[1][1] = 1
+
+        return ejes
+"""
+
 #PRUEBA:
 axisA = np.array([[1, 1, 0],
                   [0, -1, 0],
                   [0, 0, 1]])
-
+"""
 axisB = np.array([[1, 2, 3],
                   [4, 5, 6],
                   [7, 8, 9]])
@@ -56,3 +120,18 @@ print(bTa)
 bP = point_translation(aP, bPa0, axisA, axisB)
 
 print(bP)
+"""
+theta = ejes_a_theta(axisA)
+axis = theta_a_ejes(theta)
+print(axis)
+
+self._cero_universal = np.array([0.0, 0.0, 0.0])
+        self._ejes_universales = np.array([[1.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 1.0]])
+
+        self._cero_robot = np.array([0.0, 0.0, 0.0])
+        self._theta_robot = 0.0
+        self._ejes_robot = np.array([[1.0, 0.0, 0.0],
+                                     [0.0, 1.0, 0.0],
+                                     [0.0, 0.0, 1.0]])
