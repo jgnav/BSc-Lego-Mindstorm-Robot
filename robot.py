@@ -102,13 +102,13 @@ class movimiento:
 
     #Ambos motores
     def correr(self, linear, angular):
-        self._derecha = ((linear)+((angular*self._sruedas)/2))/self._radio
-        self._izquierda = ((linear)-((angular*self._sruedas)/2))/self._radio
+        self._derecha = ((linear)-((angular*self._sruedas)/2))/self._radio
+        self._izquierda = ((linear)+((angular*self._sruedas)/2))/self._radio
         self._dos_motores.on(self._SpeedRadPS(self._izquierda), self._SpeedRadPS(self._derecha))
 
     def correr_tiempo(self, linear, angular, seconds, bloqueo):
-        self._derecha = ((linear)+((angular*self._sruedas)/2))/self._radio
-        self._izquierda = ((linear)-((angular*self._sruedas)/2))/self._radio
+        self._derecha = ((linear)-((angular*self._sruedas)/2))/self._radio
+        self._izquierda = ((linear)+((angular*self._sruedas)/2))/self._radio
         self._dos_motores.on_for_seconds(self._SpeedRadPS(self._izquierda), self._SpeedRadPS(self._derecha), seconds, block = bloqueo)
 
     def parar(self):
@@ -127,16 +127,14 @@ class odometria(movimiento):
     def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas):
         movimiento.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas)
         self._perimetro_rueda = 2*pi*self._radio
-        self._tiempo_espera = 0.01
-        self._posicion_robot = [0.0, 0.0, 0.0, 0.0]
         self._f = None
-
         self._odometria_activa = False
         self._fin_odometria = True
         self._escribir_fichero_activo = False
         self._fin_escribir_fichero = True
+        self._posicion_robot = [0.0, 0.0, 0.0, 0.0]
 
-    def empezar_odometria(self, posicion, modo):
+    def empezar_odometria(self, posicion, modo, tiempo_espera):
         self._posicion_robot = posicion
 
         def _hilo_odometria():
@@ -155,8 +153,8 @@ class odometria(movimiento):
                 h = tiempo_actual - tiempo_anterior
 
                 if not ticks_izquierda and not ticks_derecha or not h:
-                    if self._tiempo_espera:
-                        sleep(self._tiempo_espera)
+                    if tiempo_espera:
+                        sleep(tiempo_espera)
                     continue
 
                 izquierda_anterior = izquierda_actual
@@ -174,21 +172,21 @@ class odometria(movimiento):
 
                 v = distancia_total / h
 
-                if(modo == "euler"){
+                if (modo == "euler"):
 
                     #Euler
                     self._posicion_robot[0] += distancia_total * cos(self._posicion_robot[3])
                     self._posicion_robot[1] += distancia_total * sin(self._posicion_robot[3])
                     self._posicion_robot[3] += rotacion_total
 
-                }elif(modo == "RK_2"){
+                elif (modo == "RK_2"):
 
                     #Runge-Kutta de segundo orden
                     self._posicion_robot[0] += distancia_total * cos(self._posicion_robot[3] + (rotacion_total/2))
                     self._posicion_robot[1] += distancia_total * sin(self._posicion_robot[3] + (rotacion_total/2))
                     self._posicion_robot[3] += rotacion_total
 
-                }elif(modo == "RK_4"){
+                elif (modo == "RK_4"):
 
                     #Runge-Kutta de cuarto orden
                     k01 = v * cos(self._posicion_robot[3])
@@ -204,11 +202,9 @@ class odometria(movimiento):
                     self._posicion_robot[0] += (1/6)*h*(k01 + 2*(k02 + k03) + k04)
                     self._posicion_robot[1] += (1/6)*h*(k11 + 2*(k12 + k13) + k14)
                     self._posicion_robot[3] += rotacion_total
-                }
 
-
-                if self._tiempo_espera:
-                    sleep(self._tiempo_espera)
+                if tiempo_espera:
+                    sleep(tiempo_espera)
 
             self._fin_odometria = True
 
@@ -222,11 +218,7 @@ class odometria(movimiento):
         if not self._fin_odometria:
             self._id_hilo_odometria.join(timeout=None)
 
-    @property
-    def posicion(self):
-        return self._posicion_robot
-
-    def empezar_posicion_fichero(self, nombre_fichero):
+    def empezar_posicion_fichero(self, nombre_fichero, tiempo_espera):
         self._f = open(nombre_fichero,"w")
 
         def _hilo_fichero():
@@ -234,7 +226,7 @@ class odometria(movimiento):
             while self._escribir_fichero_activo:
                 self._f.write(str(i)+ " "+str(self._posicion_robot)+"\n")
                 i = i + 1
-                sleep(self._tiempo_espera)
+                sleep(tiempo_espera)
 
             self._fin_escribir_fichero = True
 
@@ -249,3 +241,80 @@ class odometria(movimiento):
             self._id_hilo_fichero.join(timeout=None)
         self._f.close()
 
+class navegacion(odometria):
+    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas):
+        odometria.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas)
+        self.empezar_odometria(self._posicion_robot, "RK_4", 0.001)
+        self._ejes_universales = [[1.0, 0.0, 0.0],
+                                  [0.0, 1.0, 0.0],
+                                  [0.0, 0.0, 1.0]]
+
+    def _theta_a_ejes(self, theta):
+        ejes = [[1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]]
+
+        ejes[0][0] = cos(theta - (pi/2))
+        ejes[1][0] = sin(theta - (pi/2))
+        ejes[0][1] = cos(theta)
+        ejes[1][1] = sin(theta)
+
+        return ejes
+
+    def _matriz_de_rotacion(self, ejesA, ejesB):
+        axisA = np.array(ejesA)
+        axisB = np.array(ejesB)
+        bRa = np.array([[(axisA[:, 0] @ axisB[:, 0]), (axisA[:, 1] @ axisB[:, 0]), (axisA[:, 2] @ axisB[:, 0])],
+                        [(axisA[:, 0] @ axisB[:, 1]), (axisA[:, 1] @ axisB[:, 1]), (axisA[:, 2] @ axisB[:, 1])],
+                        [(axisA[:, 0] @ axisB[:, 2]), (axisA[:, 1] @ axisB[:, 2]), (axisA[:, 2] @ axisB[:, 2])]])
+        return bRa.tolist()
+
+
+    def _matriz_de_translacion(self, cero, m_rotacion):
+        bPa0 = np.array(cero)
+        bRa = np.array(m_rotacion)
+        bTa = np.array([[bRa[0][0], bRa[0][1], bRa[0][2], bPa0[0]],
+                        [bRa[1][0], bRa[1][1], bRa[1][2], bPa0[1]],
+                        [bRa[2][0], bRa[2][1], bRa[2][2], bPa0[2]],
+                        [0, 0, 0, 1]])
+        return bTa.tolist()
+
+    def _matriz_de_translacion_inversa(self, cero, m_rotacion):
+        bPa0 = np.array(cero)
+        bRa = np.array(m_rotacion)
+        bRaT = np.transpose(bRa)
+        aux = -(bRaT @ bPa0)
+        aTb = np.array([[bRaT[0][0], bRaT[0][1], bRaT[0][2], aux[0]],
+                        [bRaT[1][0], bRaT[1][1], bRaT[1][2], aux[1]],
+                        [bRaT[2][0], bRaT[2][1], bRaT[2][2], aux[2]],
+                        [0, 0, 0, 1]])
+        return aTb.tolist()
+
+    def _translacion_de_punto(self, aP, aPb0, axisA, axisB):
+        bRa = self._matriz_de_rotacion(axisA, axisB)
+        aTb = self._matriz_de_translacion_inversa(aPb0, bRa)
+        aPprima = np.append(np.array(aP), 1)
+        bP = np.array(aTb) @ aPprima
+        return bP[:3].tolist()
+
+    def _c_globales_a_robot(self, coordenadas):
+        ejes_robot = self._theta_a_ejes(self._posicion_robot[3])
+        return self._translacion_de_punto(coordenadas, self._posicion_robot[:3], self._ejes_universales, ejes_robot)
+
+    def navegacion_reactiva_campos(self, posicion_inicial, posicion_destino):
+        self._posicion_robot = posicion_inicial
+        v_max = 0.2  #0.5
+        w_max = pi/2  #2*pi
+        vector_resultado = [0.0, 0.0, 0.0]
+
+        while 1:
+            posicion_destino_robot = self._c_globales_a_robot(posicion_destino)
+            vector_resultado[0] = posicion_destino_robot[0]
+            vector_resultado[1] = posicion_destino_robot[1]
+
+            total = abs(vector_resultado[0]) + abs(vector_resultado[1])
+            porcentaje_v = vector_resultado[0] / total
+            porcentaje_w = vector_resultado[1] / total
+            self.correr(v_max*porcentaje_v, w_max*porcentaje_w)
+
+        self.parar()
