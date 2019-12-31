@@ -10,26 +10,19 @@ from math import pi
 
 m = movimiento(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122)
 #s = sensores_y_bateria(INPUT_1, INPUT_4)
-o = odometria(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122)
-n = navegacion(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122)
+#o = odometria(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122, posicion = posicion_inicial, modo = "RK_4")
+
 
 posicion_inicial = [0.0, 0.0, 0.0, pi/2]
-posicion_destino = [1.0, 1.0, 0.0]
+posicion_destino = [1.0, 0.0, 0.0]
 
-n.navegacion_reactiva_campos(posicion_inicial, posicion_destino)
-
-o.parar_odometria()
+n = navegacion(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122, posicion = posicion_inicial, modo = "RK_4")
+n.navegacion_reactiva_campos(posicion_destino)
 
 """
-o.empezar_posicion_fichero("puntos.txt")
+o.empezar_posicion_fichero("puntos.txt", 0.01)
 for i in range(0,16):
     m.correr_tiempo(0.2, 0, 1.5, True)
     m.correr_tiempo(0, pi/2, 0.89, True)
 o.parar_posicion_fichero()
-
-
-m.correr_tiempo(0.2, 0, 5, True)
-f = open("puntos.txt","w")
-f.write(str(o.posicion)+"\n")
-f.close()
 """

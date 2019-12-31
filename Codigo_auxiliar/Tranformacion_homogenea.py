@@ -2,6 +2,28 @@ import numpy as np
 from math import cos, sin, pi
 
 
+_posicion_robot = [0.0, 0.0, 0.0, pi]
+punto_global = [0.0, 1.0, 0.0]
+
+angulo = _posicion_robot[3] - pi/2
+R = np.array([[cos(angulo), -sin(angulo), 0],
+              [sin(angulo), cos(angulo), 0],
+              [0.0, 0.0, 1.0]])
+
+Rt = np.transpose(R)
+aux = -(Rt @ _posicion_robot[:3])
+T = np.array([[Rt[0][0], Rt[0][1], Rt[0][2], aux[0]],
+              [Rt[1][0], Rt[1][1], Rt[1][2], aux[1]],
+              [Rt[2][0], Rt[2][1], Rt[2][2], aux[2]],
+              [0, 0, 0, 1]])
+
+aux = np.append(np.array(punto_global), 1)
+resultado = T @ aux
+
+print(resultado[:3].tolist())
+
+
+"""
 def _theta_a_ejes(theta):
     ejes = [[1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
@@ -50,20 +72,6 @@ def _translacion_de_punto(aP, aPb0, axisA, axisB):
     bP = np.array(aTb) @ aPprima
     return bP[:3].tolist()
 
-robot = [1.0, 1.0, 1.0, pi]
-aPb0 = robot[:3]
-axisB = _theta_a_ejes(robot[3])
-aPb0 = robot[:3]
-
-axisA = [[1.0, 0.0, 0.0],
-         [0.0, 1.0, 0.0],
-         [0.0, 0.0, 1.0]]
-aP = [1.0, 1.0, 1.0]
-
-print(_translacion_de_punto(aP, aPb0, axisA, axisB))
-
-
-"""
 def rotation_matrix(axisA, axisB):
     bRa = np.array([[(axisA[0] @ axisB[0]), (axisA[1] @ axisB[0]), (axisA[2] @ axisB[0])],
                     [(axisA[0] @ axisB[1]), (axisA[1] @ axisB[1]), (axisA[2] @ axisB[1])],
@@ -197,4 +205,54 @@ self._ejes_robot = np.array([[1.0, 0.0, 0.0],
             ejes[1][1] = 1
 
         return ejes
+
+    def _theta_a_ejes(self, theta):
+        ejes = [[1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0]]
+        ejes[0][0] = cos(theta - (pi/2))
+        ejes[1][0] = sin(theta - (pi/2))
+        ejes[0][1] = cos(theta)
+        ejes[1][1] = sin(theta)
+        return ejes
+
+    def _matriz_de_rotacion(self, ejesA, ejesB):
+        axisA = np.array(ejesA)
+        axisB = np.array(ejesB)
+        bRa = np.array([[(axisA[:, 0] @ axisB[:, 0]), (axisA[:, 1] @ axisB[:, 0]), (axisA[:, 2] @ axisB[:, 0])],
+                        [(axisA[:, 0] @ axisB[:, 1]), (axisA[:, 1] @ axisB[:, 1]), (axisA[:, 2] @ axisB[:, 1])],
+                        [(axisA[:, 0] @ axisB[:, 2]), (axisA[:, 1] @ axisB[:, 2]), (axisA[:, 2] @ axisB[:, 2])]])
+        return bRa.tolist()
+
+
+    def _matriz_de_translacion(self, cero, m_rotacion):
+        bPa0 = np.array(cero)
+        bRa = np.array(m_rotacion)
+        bTa = np.array([[bRa[0][0], bRa[0][1], bRa[0][2], bPa0[0]],
+                        [bRa[1][0], bRa[1][1], bRa[1][2], bPa0[1]],
+                        [bRa[2][0], bRa[2][1], bRa[2][2], bPa0[2]],
+                        [0, 0, 0, 1]])
+        return bTa.tolist()
+
+    def _matriz_de_translacion_inversa(self, cero, m_rotacion):
+        bPa0 = np.array(cero)
+        bRa = np.array(m_rotacion)
+        bRaT = np.transpose(bRa)
+        aux = -(bRaT @ bPa0)
+        aTb = np.array([[bRaT[0][0], bRaT[0][1], bRaT[0][2], aux[0]],
+                        [bRaT[1][0], bRaT[1][1], bRaT[1][2], aux[1]],
+                        [bRaT[2][0], bRaT[2][1], bRaT[2][2], aux[2]],
+                        [0, 0, 0, 1]])
+        return aTb.tolist()
+
+    def _translacion_de_punto(self, aP, aPb0, axisA, axisB):
+        bRa = self._matriz_de_rotacion(axisA, axisB)
+        aTb = self._matriz_de_translacion(aPb0, bRa)
+        aPprima = np.append(np.array(aP), 1)
+        bP = np.array(aTb) @ aPprima
+        return bP[:3].tolist()
+
+    def _c_globales_a_robot(self, coordenadas):
+        ejes_robot = self._theta_a_ejes(self._posicion_robot[3])
+        return self._translacion_de_punto(coordenadas, self._posicion_robot[:3], self._ejes_universales, ejes_robot)
 """
