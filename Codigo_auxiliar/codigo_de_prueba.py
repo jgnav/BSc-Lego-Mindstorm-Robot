@@ -1,29 +1,23 @@
-import numpy as np
-from math import cos, sin, pi
 
+posicion_robot = [0.0, 0.0, 0.0, pi/2]
+punto_global = [1.0, 1.0, 0.0]
 
-_posicion_robot = [0.0, 0.0, 0.0, pi]
-punto_global = [0.0, 1.0, 0.0]
-
-angulo = _posicion_robot[3] - pi/2
-R = np.array([[cos(angulo), -sin(angulo), 0],
-              [sin(angulo), cos(angulo), 0],
-              [0.0, 0.0, 1.0]])
+R = np.array([[cos(posicion_robot[3]), -sin(posicion_robot[3]), 0],
+            [sin(posicion_robot[3]), cos(posicion_robot[3]), 0],
+            [0.0, 0.0, 1.0]])
 
 Rt = np.transpose(R)
-aux = -(Rt @ _posicion_robot[:3])
-T = np.array([[Rt[0][0], Rt[0][1], Rt[0][2], aux[0]],
-              [Rt[1][0], Rt[1][1], Rt[1][2], aux[1]],
-              [Rt[2][0], Rt[2][1], Rt[2][2], aux[2]],
-              [0, 0, 0, 1]])
+aux = -(Rt @ posicion_robot[:3])
 
-aux = np.append(np.array(punto_global), 1)
-resultado = T @ aux
+T = np.array([[Rt[0][0], Rt[0][1], Rt[0][2], aux[0]],
+            [Rt[1][0], Rt[1][1], Rt[1][2], aux[1]],
+            [Rt[2][0], Rt[2][1], Rt[2][2], aux[2]],
+            [0, 0, 0, 1]])
+
+resultado = T @ np.append(np.array(punto_global), 1)
 
 print(resultado[:3].tolist())
 
-
-"""
 def _theta_a_ejes(theta):
     ejes = [[1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
@@ -126,8 +120,7 @@ bTa = inverted_translation_matrix(bPa0, bRa)
 bP = point_translation(aP, bPa0, axisA, axisB)
 
 print(bP)
-"""
-"""
+
 theta = ejes_a_theta(axisA)
 axis = theta_a_ejes(theta)
 print(axis)
@@ -142,8 +135,7 @@ self._theta_robot = 0.0
 self._ejes_robot = np.array([[1.0, 0.0, 0.0],
                              [0.0, 1.0, 0.0],
                              [0.0, 0.0, 1.0]])
- """
-"""
+
     def _ejes_a_theta(self, ejes):
         if ((ejes[0][1] > 0) and (ejes[1][1] >= 0)):
 
@@ -255,4 +247,4 @@ self._ejes_robot = np.array([[1.0, 0.0, 0.0],
     def _c_globales_a_robot(self, coordenadas):
         ejes_robot = self._theta_a_ejes(self._posicion_robot[3])
         return self._translacion_de_punto(coordenadas, self._posicion_robot[:3], self._ejes_universales, ejes_robot)
-"""
+
