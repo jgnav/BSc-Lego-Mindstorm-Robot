@@ -4,8 +4,8 @@ from math import cos, sin, pi
 posicion_inicial = [0.0, 0.0, 0.0, pi/2]
 
 mu = posicion_inicial
-sigma = np.array([[np.var(posicion_inicial[0]), 0.0, 0.0],
-                         [0.0, np.var(posicion_inicial[1]), 0.0],
-                         [0.0, 0.0, np.var(posicion_inicial[3])]])
+sigma = np.array([[1, 2, 3],
+                  [4, 5, 6],
+                  [7, 8, 9]])
 
-print(sigma)
+print(sigma.T)

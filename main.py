@@ -9,9 +9,8 @@ import numpy as np
 from math import pi
 
 m = movimiento(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122)
-#s = sensores_y_bateria(INPUT_1, INPUT_4)
+#s = sensores_y_bateria(IjuangutierreznavNPUT_1, INPUT_4)
 #o = localizacion(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, diametro_rueda = 0.056, separacion_ruedas = 0.122, posicion = posicion_inicial, modo = "RK_4")
-
 
 posicion_inicial = [0.0, 0.0, 0.0, pi/2]
 punto_destino = [1.0, -1.0, 0.0]
