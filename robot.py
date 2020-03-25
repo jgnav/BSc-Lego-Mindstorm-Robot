@@ -3,7 +3,7 @@
 from ev3dev2.motor import Motor, SpeedRPS, MoveTank
 from ev3dev2.sensor.lego import ColorSensor, UltrasonicSensor
 from ev3dev2.power import PowerSupply
-from math import pi, sin, cos, atan, atan2
+from math import pi, sin, cos, atan, atan2, tan, sqrt
 from threading import Thread
 import numpy as np
 from time import sleep, time
@@ -125,26 +125,25 @@ class movimiento:
 
 
 class localizacion(movimiento):
-    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion, modo):
+    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion):
         movimiento.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas)
 
+        self.s = sensores_y_bateria(INPUT_1, INPUT_4)
         self.perimetro_rueda = 2*pi*self.radio
-
         self.posicion_robot = posicion
 
         #Odometria
         self.izquierda_anterior = self.motor_izquierdo.position
         self.derecha_anterior = self.motor_derecho.position
         self.tiempo_anterior = time()
-        self.modo = modo
 
         #Probabilística
         self.margen_inicial_x_y = 0.05
         self.margen_inicial_angulo = 0.573
-        self.mu =  np.array([[self.posicion_robot[0]],
-                              [self.posicion_robot[1]],
-                              [self.posicion_robot[3]]])
-        self.sigma = np.array([[(self.margen_inicial_x_y/4)**2, 0.0, 0.0],
+        self.muk = np.array([[self.posicion_robot[0][0]],
+                             [self.posicion_robot[1][0]],
+                             [self.posicion_robot[3][0]]])
+        self.sigmak = np.array([[(self.margen_inicial_x_y/4)**2, 0.0, 0.0],
                                 [0.0, (self.margen_inicial_x_y/4)**2, 0.0],
                                 [0.0, 0.0, (self.margen_inicial_angulo/4)**2]])
 
@@ -153,12 +152,136 @@ class localizacion(movimiento):
         self.escribir_fichero_activo = False
         self.fin_escribir_fichero = True
 
-    # def simular_sensor(self, posicion):
-    #     mapa = [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]]
+    def cutwithwall(self, xk, yk, pk, xp1, yp1, xp2, yp2):
+        xc = 0
+        yc = 0
+        dyp = yp2-yp1
+        dxp = xp2-xp1
+        denxc = dyp-dxp*tan(pk)
+        if denxc == 0:
+            thereis=0
+            return thereis, xc, yc
 
-    #     return
+        num = dyp*(xk-xp1)+dxp*(yp1-yk)
+        xc = xk-num/denxc
+        denyc = dxp-dyp*(1/tan(pk))
+        if denyc == 0:
+            thereis=0
+            return thereis, xc, yc
 
-    def odometria(self):
+        yc=yk+num/denyc
+
+        u = np.array([xc-xk, yc-yk])
+        r = np.array([cos(pk), sin(pk)])
+        if (u[0]*r[0]+u[1]*r[1]) < 0:
+            thereis=0
+            return thereis, xc, yc
+
+        u = np.array([xp2-xp1, yp2-yp1])
+        c = np.array([xc-xp1, yc-yp1])
+        mu = sqrt((u[0]**2)+(u[1]**2))
+        mc = sqrt((c[0]**2)+(c[1]**2))
+        if (u[0]*c[0]+u[1]*c[1]) < 0:
+            thereis=0
+            return thereis, xc, yc
+
+        if mc > mu:
+            thereis=0
+            return thereis, xc, yc
+
+        thereis=1
+
+        return thereis, xc, yc
+
+    def planeposesonar(self, Ts2u):
+        originsonar = Ts2u @ np.array([[0], [0], [0], [1]])
+        endingsonar = Ts2u @ np.array([[1], [0], [0], [1]])
+        posesonar = [originsonar[0][0], originsonar[1][0], atan2(endingsonar[1][0]-originsonar[1][0], endingsonar[0][0]-originsonar[0][0])]
+        return posesonar
+
+    def raycasting(self, mapa, poser, Ts2u):
+        posesonar = self.planeposesonar(Ts2u)
+
+        nps = len(mapa)
+        cuts = []
+        for f in range(0, nps):
+            thereis0, xc0, yc0 = self.cutwithwall(posesonar[0], posesonar[1], posesonar[2], mapa[f][0], mapa[f][1], mapa[f][2], mapa[f][3])
+            if thereis0 == 1:
+                d0 = sqrt(((xc0-posesonar[0])**2)+((yc0-posesonar[1])**2))
+                cuts.append([f, xc0, yc0, d0])
+
+        if cuts == []:
+            indwall = -1
+            xc = 0
+            yc = 0
+            dc = 0
+            drc = 0
+            return indwall, xc, yc, dc, drc
+
+        aux = [row[3] for row in cuts]
+
+        minc = min(aux)
+        iminc = aux.index(minc)
+        indwall = cuts[iminc][0]
+        xc = cuts[iminc][1]
+        yc = cuts[iminc][2]
+        dc = cuts[iminc][3]
+        drc = sqrt(((xc-poser[0])**2)+(yc-poser[1])**2)
+
+        return indwall, xc, yc, dc, drc
+
+    def eq3(self, mapa, muk_pred, Ts2u):
+        calculationsok = 0
+        Hk = np.array([[0.0, 0.0, 0.0]])
+        ok = 0
+
+        indwall, xc, yc, mu_zk, drc = self.raycasting(mapa, muk_pred, Ts2u)
+        if indwall == -1:
+            return calculationsok, Hk, mu_zk
+
+        xp1 = mapa[indwall][0]
+        yp1 = mapa[indwall][1]
+        xp2 = mapa[indwall][2]
+        yp2 = mapa[indwall][3]
+
+        posesonar = self.planeposesonar(Ts2u)
+        senbeta = yp2-yp1
+        cosbeta = xp2-xp1
+        sentheta = sin(posesonar[2])
+        costheta = cos(posesonar[2])
+
+        if ((senbeta == 0) and (sentheta == 0)) or ((cosbeta == 0) and (costheta == 0)):
+            return calculationsok, Hk, mu_zk
+
+        if (cosbeta != 0) and (costheta != 0):
+            if (senbeta/cosbeta == sentheta/costheta):
+                return calculationsok, Hk, mu_zk
+
+        if (cosbeta != 0):
+            tanbeta = senbeta/cosbeta
+            den = sentheta-costheta*tanbeta
+            Hk[0][0] = tanbeta/den
+            Hk[0][1] = -1/den
+            Hk[0][2] = -(-(posesonar[1]-yp1)+(posesonar[0]-xp1)*tanbeta)*(costheta+sentheta*tanbeta)/(den**2)
+        else:
+            cotbeta = cosbeta/senbeta
+            den = costheta-sentheta*cotbeta
+            Hk[0][0] = -1/den
+            Hk[0][1] = cotbeta/den
+            Hk[0][2] = -(-(posesonar[0]-xp1)+(posesonar[1]-yp1)*cotbeta)*(-sentheta+costheta*cotbeta)/(den**2)
+
+        calculationsok = 1
+
+        return calculationsok, Hk, mu_zk
+
+    def T_a_global(self, posicion):
+        T = np.array([[cos(posicion[2][0]), -sin(posicion[2][0]), 0.0, posicion[0][0]],
+                      [sin(posicion[2][0]), cos(posicion[2][0]), 0.0, posicion[1][0]],
+                      [0.0, 0.0, 1.0, 0.0],
+                      [0.0, 0.0, 0.0, 1.0]])
+        return T
+
+    def odometria(self, modo):
         izquierda_actual = self.motor_izquierdo.position
         derecha_actual = self.motor_derecho.position
         tiempo_actual = time()
@@ -183,78 +306,107 @@ class localizacion(movimiento):
 
             v = distancia_total / h
 
-            if (self.modo == "euler"): #Euler
-                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3])
-                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3])
+            if (modo == "euler"): #Euler
+                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0])
+                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0])
                 self.posicion_robot[3] += rotacion_total
 
-            elif (self.modo == "RK_2"): #Runge-Kutta de segundo orden
-                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3] + (rotacion_total/2))
-                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3] + (rotacion_total/2))
+                return self.posicion_robot
+
+            elif (modo == "RK_2"): #Runge-Kutta de segundo orden
+                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0] + (rotacion_total/2))
+                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0] + (rotacion_total/2))
                 self.posicion_robot[3] += rotacion_total
 
-            elif (self.modo == "RK_4"): #Runge-Kutta de cuarto orden
-                k01 = v * cos(self.posicion_robot[3])
-                k02 = (v + 0.5*h) * cos(self.posicion_robot[3] + 0.5*k01*h)
-                k03 = (v + 0.5*h) * cos(self.posicion_robot[3] + 0.5*k02*h)
-                k04 = (v + h) * cos(self.posicion_robot[3] + k03*h)
+                return self.posicion_robot
 
-                k11 = v * sin(self.posicion_robot[3])
-                k12 = (v + 0.5*h) * sin(self.posicion_robot[3] + 0.5*k11*h)
-                k13 = (v + 0.5*h) * sin(self.posicion_robot[3] + 0.5*k12*h)
+            elif (modo == "RK_4"): #Runge-Kutta de cuarto orden
+                k01 = v * cos(self.posicion_robot[3][0])
+                k02 = (v + 0.5*h) * cos(self.posicion_robot[3][0] + 0.5*k01*h)
+                k03 = (v + 0.5*h) * cos(self.posicion_robot[3][0] + 0.5*k02*h)
+                k04 = (v + h) * cos(self.posicion_robot[3][0] + k03*h)
+
+                k11 = v * sin(self.posicion_robot[3][0])
+                k12 = (v + 0.5*h) * sin(self.posicion_robot[3][0] + 0.5*k11*h)
+                k13 = (v + 0.5*h) * sin(self.posicion_robot[3][0] + 0.5*k12*h)
                 k14 = (v + h) * sin(self.posicion_robot[3] + k13*h)
 
                 self.posicion_robot[0] += (1/6)*h*(k01 + 2*(k02 + k03) + k04)
                 self.posicion_robot[1] += (1/6)*h*(k11 + 2*(k12 + k13) + k14)
                 self.posicion_robot[3] += rotacion_total
 
-        return self.posicion_robot
+                return self.posicion_robot
 
-    def localizacion_probabilistica(self):
-        mu_pred = [0.0, 0.0, 0.0]
+            elif (modo == "Prob"): #Uso en localización probabilistica
+                muk_pred = np.array([[self.muk[0][0] + (distancia_total * cos(self.muk[2][0]))],
+                                     [self.muk[1][0] + (distancia_total * sin(self.muk[2][0]))],
+                                     [self.muk[2][0] + rotacion_total]])
 
-        izquierda_actual = self.motor_izquierdo.position
-        derecha_actual = self.motor_derecho.position
+                G = np.array([[1.0, 0.0, -distancia_total*sin(self.muk[2][0])],
+                              [0.0, 1.0, distancia_total*cos(self.muk[2][0])],
+                              [0.0, 0.0, 1.0]])
 
-        ticks_izquierda = izquierda_actual - self.izquierda_anterior
-        ticks_derecha = derecha_actual - self.derecha_anterior
+                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0]) #****************
+                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0])
+                self.posicion_robot[3] += rotacion_total
 
+                return muk_pred, G
 
-        self.izquierda_anterior = izquierda_actual
-        self.derecha_anterior = derecha_actual
+    def localizacion_probabilistica(self, mapa, rox, roy, rotheta, Rk):
+        muk_pred, G = self.odometria("Prob")
 
-        rotacion_izquierda = float(ticks_izquierda / self.motor_izquierdo.count_per_rot)
-        rotacion_derecha = float(ticks_derecha / self.motor_derecho.count_per_rot)
+        Q = np.array([[(rox*(muk_pred[0][0]-self.muk[0][0]))**2, 0.0, 0.0],
+                      [0.0, (roy*(muk_pred[1][0]-self.muk[1][0]))**2, 0.0],
+                      [0.0, 0.0, (rotheta*(muk_pred[2][0]-self.muk[2][0]))**2]])
 
-        distancia_izquierda = float(rotacion_izquierda * self.perimetro_rueda)
-        distancia_derecha = float(rotacion_derecha * self.perimetro_rueda)
+        sigmak_pred = G @ self.sigmak @ G.T + Q
 
-        distancia_total = (distancia_izquierda + distancia_derecha) / 2.0
-        rotacion_total = (distancia_derecha - distancia_izquierda) / self.sruedas
+        offsx = -0.059
+        offsy = -0.0235
+        offsphi = pi/2
+        rTs = np.array([[cos(offsphi), -sin(offsphi), 0, offsx],
+                        [sin(offsphi), cos(offsphi), 0, offsy],
+                        [0, 0, 1, 0],
+                        [0, 0, 0, 1]])
+        uTr = self.T_a_global(muk_pred)
+        uTs = uTr @ rTs
 
-        mu_pred[0] = self.mu[0] + distancia_total * cos(self.mu[3])
-        mu_pred[1] = self.mu[1] + distancia_total * sin(self.mu[3])
-        mu_pred[3] = self.mu[3] + rotacion_total
+        calculationsok, Hk, mu_zk = self.eq3(mapa, muk_pred, uTs)
 
-        G = np.array([[1.0, 0.0, -distancia_total*sin(self.posicion_robot[3])],
-                      [0.0, 1.0, distancia_total*cos(self.posicion_robot[3])],
-                      [0.0, 0.0, 1.0]])
+        if calculationsok:
+            sigma_zk = Hk[0] @ sigmak_pred @ Hk.T + Rk
 
-        Q = np.array([[(0.05*(mu_pred[0]-self.mu[0]))**2, 0.0, 0.0],
-                      [0.0, (0.05*(mu_pred[1]-self.mu[1]))**2, 0.0],
-                      [0.0, 0.0, (0.573*(mu_pred[3]-self.mu[3]))**2]])
+            sigmapok_pred = sigmak_pred @ Hk.T
 
-        sigma_pred = G @ self.sigma @ G.T + Q
+            Kk = sigmapok_pred * (1/sigma_zk)
 
-        #observacion_expectada = self.simular_sensor(mu_pred)
+            distancia = self.s.distancia_sonar
+            self.muk = muk_pred + Kk * (distancia - mu_zk)
+            self.sigmak = sigmak_pred - Kk @ (Hk @ sigmak_pred)
 
-    def empezar_posicion_fichero(self, nombre_fichero, tiempo_espera):
+        else:
+            self.muk = muk_pred
+            self.sigmak = sigmak_pred
+
+        return self.muk, self.sigmak, distancia
+
+    def empezar_posicion_fichero(self, nombre_fichero):
         def hilo_fichero():
             i = 0
             while self.escribir_fichero_activo:
-                self.f.write(str(i)+" "+str(self.odometria())+"\n")
+                mapa = np.array([[0, 1.03, 0, 0],
+                                 [1.03, 1.03, 0, 1.03],
+                                 [1.03, 0, 1.03, 1],
+                                 [0 ,0 ,1.03, 0]])
+                rox = 0.05
+                roy = 0.05
+                rotheta = 0.573
+                Rk = 0.1**2
+
+                mu, sigma, distancia = self.localizacion_probabilistica(mapa, rox, roy, rotheta, Rk)
+
+                self.f.write(str(i)+" "+str(mu[0][0])+" "+str(mu[1][0])+" "+str(mu[2][0])+" "+str(sigma[0][0])+" "+str(sigma[0][1])+" "+str(sigma[0][2])+" "+str(sigma[1][0])+" "+str(sigma[1][1])+" "+str(sigma[1][2])+" "+str(sigma[2][0])+" "+str(sigma[2][1])+" "+str(sigma[2][2])+" "+str(self.posicion_robot[0][0])+" "+str(self.posicion_robot[1][0])+" "+str(self.posicion_robot[2][0])+" "+str(distancia)+"\n")
                 i = i + 1
-                sleep(tiempo_espera)
 
             self.fin_escribir_fichero = True
 
@@ -271,35 +423,35 @@ class localizacion(movimiento):
         self.f.close()
 
 class navegacion(localizacion):
-    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion, modo):
-        localizacion.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion, modo)
-        self.s = sensores_y_bateria(INPUT_1, INPUT_4)
+    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion):
+        localizacion.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion)
 
     def coordenadas_global_a_robot(self, posicion_robot, punto_global):
         R = np.array([[cos(posicion_robot[3]), -sin(posicion_robot[3]), 0],
                       [sin(posicion_robot[3]), cos(posicion_robot[3]), 0],
                       [0.0, 0.0, 1.0]])
 
-        Rt = R.T
-        aux = -(Rt @ posicion_robot[:3])
+        Rt = R.transpose()
+        aux = -(Rt.dot(posicion_robot[:3]))
 
         T = np.array([[Rt[0][0], Rt[0][1], Rt[0][2], aux[0]],
                      [Rt[1][0], Rt[1][1], Rt[1][2], aux[1]],
                      [Rt[2][0], Rt[2][1], Rt[2][2], aux[2]],
                      [0, 0, 0, 1]])
 
-        resultado = T @ np.append(np.array(punto_global), 1)
+        np.append(punto_global, 1)
+        resultado = T.dot(punto_global)
 
-        return resultado[:3].tolist()
+        return resultado[:3]
 
     def navegacion_reactiva_campos_virtuales(self, punto_destino):
-        vector_resultante = [0.0, 0.0, 0.0]
+        vector_resultante = np.array([0.0, 0.0, 0.0])
         KA = 1.0
         KR = 4.0
 
         while 1:
-            vector_hasta_destino = self.coordenadas_global_a_robot(self.odometria(), punto_destino)
-            modulo = np.sqrt(np.array(vector_hasta_destino) @ np.array(vector_hasta_destino))
+            vector_hasta_destino = self.coordenadas_global_a_robot(self.odometria("RK_4"), punto_destino)
+            modulo = sqrt(vector_hasta_destino.dot(vector_hasta_destino))
             if (modulo <= 0.05):
                 break
 
@@ -312,34 +464,35 @@ class navegacion(localizacion):
             vector_resultante[1] = KA*vector_hasta_destino[1]
             vector_resultante[2] = KA*vector_hasta_destino[2]
 
-            if((0.2 * vector_resultante[0]) > 0.5):
-                v = 0.5
-            else:
-                v = 0.2 * vector_resultante[0]
+            v = 0.2 * vector_resultante[0]
+            w = 2 * vector_resultante[1]
 
-            if((2 * vector_resultante[1]) > 2*pi):
-                w = 2 * pi
-            else:
-                w = 2 * vector_resultante[1]
+            if(v > 0.2):
+                v = 0.2
+            if(v < -0.2):
+                v = -0.2
+
+            if(w > pi):
+                w = pi
+            if(w < -pi):
+                w = -pi
 
             self.correr(v, w)
-
-            sleep(0.1)
 
         self.parar()
 
     def navegacion_planificada(self, puntos_objetivos):
         KW = 1.0
-        vector_hasta_destino = [0, 0, 0]
+        vector_hasta_destino = np.array([0, 0, 0])
 
         for punto in puntos_objetivos:
             while 1:
-                posicion_robot = self.odometria()
+                posicion_robot = self.odometria("RK_4")
                 vector_hasta_destino[0] = punto[0] - posicion_robot[0]
                 vector_hasta_destino[1] = punto[1] - posicion_robot[1]
                 vector_hasta_destino[2] = punto[2] - posicion_robot[2]
 
-                modulo = np.sqrt(np.array(vector_hasta_destino) @ np.array(vector_hasta_destino))
+                modulo = sqrt(vector_hasta_destino.dot(vector_hasta_destino))
 
                 if (modulo <= 0.05):
                     break
@@ -362,14 +515,13 @@ class navegacion(localizacion):
 
                 w = KW * angulo
 
-                if w > 2*pi:
-                    w = 2*pi
-                if w < -2*pi:
-                    w = -2*pi
+                if w > pi:
+                    w = pi
+                if w < -pi:
+                    w = -pi
 
                 self.correr(0.2, w)
 
-                sleep(0.1)
         self.parar()
 
 
