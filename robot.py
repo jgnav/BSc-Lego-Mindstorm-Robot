@@ -372,6 +372,7 @@ class localizacion(movimiento):
         uTs = uTr @ rTs
 
         calculationsok, Hk, mu_zk = self.eq3(mapa, muk_pred, uTs)
+        distancia = self.s.distancia_sonar
 
         if calculationsok:
             sigma_zk = Hk[0] @ sigmak_pred @ Hk.T + Rk
@@ -380,7 +381,6 @@ class localizacion(movimiento):
 
             Kk = sigmapok_pred * (1/sigma_zk)
 
-            distancia = self.s.distancia_sonar
             self.muk = muk_pred + Kk * (distancia - mu_zk)
             self.sigmak = sigmak_pred - Kk @ (Hk @ sigmak_pred)
 
@@ -405,7 +405,7 @@ class localizacion(movimiento):
 
                 mu, sigma, distancia = self.localizacion_probabilistica(mapa, rox, roy, rotheta, Rk)
 
-                self.f.write(str(i)+" "+str(mu[0][0])+" "+str(mu[1][0])+" "+str(mu[2][0])+" "+str(sigma[0][0])+" "+str(sigma[0][1])+" "+str(sigma[0][2])+" "+str(sigma[1][0])+" "+str(sigma[1][1])+" "+str(sigma[1][2])+" "+str(sigma[2][0])+" "+str(sigma[2][1])+" "+str(sigma[2][2])+" "+str(self.posicion_robot[0][0])+" "+str(self.posicion_robot[1][0])+" "+str(self.posicion_robot[2][0])+" "+str(distancia)+"\n")
+                self.f.write(str(i)+" "+str(mu[0][0])+" "+str(mu[1][0])+" "+str(mu[2][0])+" "+str(sigma[0][0])+" "+str(sigma[0][1])+" "+str(sigma[0][2])+" "+str(sigma[1][0])+" "+str(sigma[1][1])+" "+str(sigma[1][2])+" "+str(sigma[2][0])+" "+str(sigma[2][1])+" "+str(sigma[2][2])+" "+str(self.posicion_robot[0][0])+" "+str(self.posicion_robot[1][0])+" "+str(self.posicion_robot[2][0])+" "+str(self.posicion_robot[3][0])+" "+str(distancia)+"\n")
                 i = i + 1
 
             self.fin_escribir_fichero = True
@@ -427,20 +427,20 @@ class navegacion(localizacion):
         localizacion.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion)
 
     def coordenadas_global_a_robot(self, posicion_robot, punto_global):
-        R = np.array([[cos(posicion_robot[3]), -sin(posicion_robot[3]), 0],
-                      [sin(posicion_robot[3]), cos(posicion_robot[3]), 0],
+        R = np.array([[cos(posicion_robot[3][0]), -sin(posicion_robot[3][0]), 0],
+                      [sin(posicion_robot[3][0]), cos(posicion_robot[3][0]), 0],
                       [0.0, 0.0, 1.0]])
 
         Rt = R.transpose()
-        aux = -(Rt.dot(posicion_robot[:3]))
+        aux = -(Rt @ posicion_robot[:3])
 
-        T = np.array([[Rt[0][0], Rt[0][1], Rt[0][2], aux[0]],
-                     [Rt[1][0], Rt[1][1], Rt[1][2], aux[1]],
-                     [Rt[2][0], Rt[2][1], Rt[2][2], aux[2]],
+        T = np.array([[Rt[0][0], Rt[0][1], Rt[0][2], aux[0][0]],
+                     [Rt[1][0], Rt[1][1], Rt[1][2], aux[1][0]],
+                     [Rt[2][0], Rt[2][1], Rt[2][2], aux[2][0]],
                      [0, 0, 0, 1]])
 
-        np.append(punto_global, 1)
-        resultado = T.dot(punto_global)
+        p = np.array([[punto_global[0][0]], [punto_global[1][0]], [punto_global[2][0]], 1])
+        resultado = T @ p
 
         return resultado[:3]
 
@@ -451,7 +451,7 @@ class navegacion(localizacion):
 
         while 1:
             vector_hasta_destino = self.coordenadas_global_a_robot(self.odometria("RK_4"), punto_destino)
-            modulo = sqrt(vector_hasta_destino.dot(vector_hasta_destino))
+            modulo = sqrt(vector_hasta_destino[0].T @ vector_hasta_destino[0])
             if (modulo <= 0.05):
                 break
 
@@ -460,9 +460,9 @@ class navegacion(localizacion):
             else:
                 distancia_obstaculo = 0.45 - (self.s.distancia_sonar - 0.09)
 
-            vector_resultante[0] = KA*vector_hasta_destino[0] - KR*distancia_obstaculo
-            vector_resultante[1] = KA*vector_hasta_destino[1]
-            vector_resultante[2] = KA*vector_hasta_destino[2]
+            vector_resultante[0] = KA * vector_hasta_destino[0][0] - KR * distancia_obstaculo
+            vector_resultante[1] = KA * vector_hasta_destino[1][0]
+            vector_resultante[2] = KA * vector_hasta_destino[2][0]
 
             v = 0.2 * vector_resultante[0]
             w = 2 * vector_resultante[1]
@@ -485,14 +485,16 @@ class navegacion(localizacion):
         KW = 1.0
         vector_hasta_destino = np.array([0, 0, 0])
 
+        puntos_objetivos = puntos_objetivos.transpose()
+
         for punto in puntos_objetivos:
             while 1:
                 posicion_robot = self.odometria("RK_4")
-                vector_hasta_destino[0] = punto[0] - posicion_robot[0]
-                vector_hasta_destino[1] = punto[1] - posicion_robot[1]
-                vector_hasta_destino[2] = punto[2] - posicion_robot[2]
+                vector_hasta_destino[0] = punto[0] - posicion_robot[0][0]
+                vector_hasta_destino[1] = punto[1] - posicion_robot[1][0]
+                vector_hasta_destino[2] = punto[2] - posicion_robot[2][0]
 
-                modulo = sqrt(vector_hasta_destino.dot(vector_hasta_destino))
+                modulo = sqrt(vector_hasta_destino @ vector_hasta_destino)
 
                 if (modulo <= 0.05):
                     break
