@@ -8,14 +8,48 @@ from threading import Thread
 import numpy as np
 from time import sleep, time
 from ev3dev2.sensor import INPUT_1, INPUT_4
+from ev3dev2.stopwatch import StopWatch
 
 class sensores_y_bateria:
-    def __init__(self, sonar, sensor_suelo):
+    def __init__(self, sonar, sensor_color):
         self.sonar = UltrasonicSensor(sonar)
-        self.suelo = ColorSensor(sensor_suelo)
+        self.s_color = ColorSensor(sensor_color)
         self.bateria = PowerSupply()
 
-    #Bateria
+    #Sensor ultrasónico
+    @property
+    def distancia_sonar(self):
+        return (self.sonar.distance_centimeters / 100)
+
+    @property
+    def otros_sensores_presentes(self):
+        return self.sonar.other_sensor_present
+
+    #Sensor color
+    def calibrar_blanco(self):
+        self.s_color.calibrate_white()
+
+    @property
+    def color(self):
+        return self.s_color.color
+
+    @property
+    def nombre_color(self):
+        return self.s_color.color_name
+
+    @property
+    def ambiente(self):
+        return self.s_color.ambient_light_intensity
+
+    @property
+    def reflexion(self):
+        return self.s_color.reflected_light_intensity
+
+    @property
+    def rgb(self):
+        return self.s_color.rgb
+
+    #Batería
     @property
     def voltaje_bateria(self):
         return self.bateria.measured_volts
@@ -24,40 +58,7 @@ class sensores_y_bateria:
     def corriente_bateria(self):
         return self.bateria.measured_amps
 
-    #Sensor sonar
-    @property
-    def distancia_sonar(self):
-        return (self.sonar.distance_centimeters / 100)
-
-    @property
-    def otros_Sensores_presentes(self):
-        return self.sonar.other_sensor_present
-
-    #Sensor suelo
-    def calibrar_blaco(self):
-        self.suelo.calibrate_white()
-
-    @property
-    def color(self):
-        return self.suelo.color
-
-    @property
-    def nombre_color(self):
-        return self.suelo.color_name
-
-    @property
-    def ambiente(self):
-        return self.suelo.ambient_light_intensity
-
-    @property
-    def reflexion(self):
-        return self.suelo.reflected_light_intensity
-
-    @property
-    def rgb(self):
-        return self.suelo.rgb
-
-class movimiento:
+class motores:
     def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas):
         self.motor_izquierdo = Motor(motor_izquierdo)
         self.motor_derecho = Motor(motor_derecho)
@@ -100,6 +101,14 @@ class movimiento:
     @dc_motor_derecho.setter
     def dc_motor_derecho(self, ciclo):
         self.motor_derecho.run_direct(duty_cycle_sp = ciclo)
+    
+    @property
+    def posicion_motor_derecho(self):
+        return self.motor_derecho.position * pi / 180 
+
+    @property
+    def posicion_motor_izquierdo(self):
+        return self.motor_izquierdo.position * pi / 180
 
     #Ambos motores
     def correr(self, linear, angular):
@@ -107,10 +116,10 @@ class movimiento:
         izquierda = ((linear)-((angular*self.sruedas)/2))/self.radio
         self.dos_motores.on(self.SpeedRadPS(izquierda), self.SpeedRadPS(derecha))
 
-    def correr_tiempo(self, linear, angular, seconds, bloqueo):
+    def correr_tiempo(self, linear, angular, tiempo, bloqueo):
         derecha = ((linear)+((angular*self.sruedas)/2))/self.radio
         izquierda = ((linear)-((angular*self.sruedas)/2))/self.radio
-        self.dos_motores.on_for_seconds(self.SpeedRadPS(izquierda), self.SpeedRadPS(derecha), seconds, block = bloqueo)
+        self.dos_motores.on_for_seconds(self.SpeedRadPS(izquierda), self.SpeedRadPS(derecha), tiempo, block = bloqueo)
 
     def parar(self):
         self.dos_motores.off()
@@ -124,17 +133,17 @@ class movimiento:
         return ((self.w_motor_derecho-self.w_motor_izquierdo)*self.radio)/self.sruedas
 
 
-class localizacion(movimiento):
-    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion):
-        movimiento.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas)
+class localizacion(motores):
+    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion, loc_sonar, loc_sensor_color):
+        motores.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas)
 
-        self.s = sensores_y_bateria(INPUT_1, INPUT_4)
+        self.s = sensores_y_bateria(sonar = loc_sonar, sensor_color = loc_sensor_color)
         self.perimetro_rueda = 2*pi*self.radio
         self.posicion_robot = posicion
 
         #Odometria
-        self.izquierda_anterior = self.motor_izquierdo.position
-        self.derecha_anterior = self.motor_derecho.position
+        self.izquierda_anterior = self.posicion_motor_izquierdo
+        self.derecha_anterior = self.posicion_motor_derecho
         self.tiempo_anterior = time()
 
         #Probabilística
@@ -151,6 +160,7 @@ class localizacion(movimiento):
         self.f = None
         self.escribir_fichero_activo = False
         self.fin_escribir_fichero = True
+        self.t = StopWatch()
 
     def cutwithwall(self, xk, yk, pk, xp1, yp1, xp2, yp2):
         xc = 0
@@ -274,7 +284,7 @@ class localizacion(movimiento):
 
         return calculationsok, Hk, mu_zk
 
-    def T_a_global(self, posicion):
+    def coordenadas_robot_a_global(self, posicion):
         T = np.array([[cos(posicion[2][0]), -sin(posicion[2][0]), 0.0, posicion[0][0]],
                       [sin(posicion[2][0]), cos(posicion[2][0]), 0.0, posicion[1][0]],
                       [0.0, 0.0, 1.0, 0.0],
@@ -282,15 +292,15 @@ class localizacion(movimiento):
         return T
 
     def odometria(self, modo):
-        izquierda_actual = self.motor_izquierdo.position
-        derecha_actual = self.motor_derecho.position
+        izquierda_actual = self.posicion_motor_izquierdo
+        derecha_actual = self.posicion_motor_derecho
         tiempo_actual = time()
 
         ticks_izquierda = izquierda_actual - self.izquierda_anterior
         ticks_derecha = derecha_actual - self.derecha_anterior
         h = tiempo_actual - self.tiempo_anterior
 
-        if ticks_izquierda or ticks_derecha or h:
+        if (ticks_izquierda or ticks_derecha) and h:
             self.izquierda_anterior = izquierda_actual
             self.derecha_anterior = derecha_actual
             self.tiempo_anterior = tiempo_actual
@@ -304,8 +314,6 @@ class localizacion(movimiento):
             distancia_total = (distancia_izquierda + distancia_derecha) / 2.0
             rotacion_total = (distancia_derecha - distancia_izquierda) / self.sruedas
 
-            v = distancia_total / h
-
             if (modo == "euler"): #Euler
                 self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0])
                 self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0])
@@ -313,27 +321,35 @@ class localizacion(movimiento):
 
                 return self.posicion_robot
 
-            elif (modo == "RK_2"): #Runge-Kutta de segundo orden
-                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0] + (rotacion_total/2))
-                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0] + (rotacion_total/2))
+            elif (modo == "RK2"): #Runge-Kutta de segundo orden
+                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0] + (rotacion_total / 2))
+                self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0] + (rotacion_total / 2))
                 self.posicion_robot[3] += rotacion_total
 
                 return self.posicion_robot
 
-            elif (modo == "RK_4"): #Runge-Kutta de cuarto orden
-                k01 = v * cos(self.posicion_robot[3][0])
-                k02 = (v + 0.5*h) * cos(self.posicion_robot[3][0] + 0.5*k01*h)
-                k03 = (v + 0.5*h) * cos(self.posicion_robot[3][0] + 0.5*k02*h)
-                k04 = (v + h) * cos(self.posicion_robot[3][0] + k03*h)
+            elif (modo == "RK4"): #Runge-Kutta de cuarto orden
 
-                k11 = v * sin(self.posicion_robot[3][0])
-                k12 = (v + 0.5*h) * sin(self.posicion_robot[3][0] + 0.5*k11*h)
-                k13 = (v + 0.5*h) * sin(self.posicion_robot[3][0] + 0.5*k12*h)
-                k14 = (v + h) * sin(self.posicion_robot[3] + k13*h)
-
-                self.posicion_robot[0] += (1/6)*h*(k01 + 2*(k02 + k03) + k04)
-                self.posicion_robot[1] += (1/6)*h*(k11 + 2*(k12 + k13) + k14)
+                theta05 = self.posicion_robot[3][0] + (rotacion_total / 2)
+                theta1 = self.posicion_robot[3][0] + rotacion_total
+                self.posicion_robot[0] += distancia_total * (1/6) * (cos(self.posicion_robot[3][0]) + 4 * cos(theta05) + cos(theta1))
+                self.posicion_robot[1] += distancia_total * (1/6) * (sin(self.posicion_robot[3][0]) + 4 * sin(theta05) + sin(theta1))
                 self.posicion_robot[3] += rotacion_total
+
+                return self.posicion_robot
+
+            elif (modo == "Exacto"): #Exacto
+                v = distancia_total / h
+                w = rotacion_total / h
+                theta1 = self.posicion_robot[3] + rotacion_total
+                if w:    
+                    self.posicion_robot[0] += (v / w) * (sin(theta1) - sin(self.posicion_robot[3]))
+                    self.posicion_robot[1] -= (v / w) * (cos(theta1) - cos(self.posicion_robot[3]))
+                    self.posicion_robot[3] += rotacion_total
+                else:
+                    self.posicion_robot[0] += (distancia_total * cos(self.posicion_robot[3]))
+                    self.posicion_robot[1] += (distancia_total * sin(self.posicion_robot[3]))
+                    self.posicion_robot[3] += rotacion_total
 
                 return self.posicion_robot
 
@@ -342,11 +358,11 @@ class localizacion(movimiento):
                                      [self.muk[1][0] + (distancia_total * sin(self.muk[2][0]))],
                                      [self.muk[2][0] + rotacion_total]])
 
-                G = np.array([[1.0, 0.0, -distancia_total*sin(self.muk[2][0])],
-                              [0.0, 1.0, distancia_total*cos(self.muk[2][0])],
+                G = np.array([[1.0, 0.0, -distancia_total * sin(self.muk[2][0])],
+                              [0.0, 1.0, distancia_total * cos(self.muk[2][0])],
                               [0.0, 0.0, 1.0]])
 
-                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0]) #****************
+                self.posicion_robot[0] += distancia_total * cos(self.posicion_robot[3][0]) 
                 self.posicion_robot[1] += distancia_total * sin(self.posicion_robot[3][0])
                 self.posicion_robot[3] += rotacion_total
 
@@ -368,7 +384,7 @@ class localizacion(movimiento):
                         [sin(offsphi), cos(offsphi), 0, offsy],
                         [0, 0, 1, 0],
                         [0, 0, 0, 1]])
-        uTr = self.T_a_global(muk_pred)
+        uTr = self.coordenadas_robot_a_global(muk_pred)
         uTs = uTr @ rTs
 
         calculationsok, Hk, mu_zk = self.eq3(mapa, muk_pred, uTs)
@@ -388,12 +404,15 @@ class localizacion(movimiento):
             self.muk = muk_pred
             self.sigmak = sigmak_pred
 
-        return self.muk, self.sigmak, distancia
+        return self.muk, self.sigmak
 
     def empezar_posicion_fichero(self, nombre_fichero):
         def hilo_fichero():
-            i = 0
+            self.t.start()
             while self.escribir_fichero_activo:
+                self.f.write(str(self.t.value_ms)+" "+str(self.posicion_motor_izquierdo)+" "+str(self.posicion_motor_derecho)+"\n")
+
+                """
                 mapa = np.array([[0, 1.03, 0, 0],
                                  [1.03, 1.03, 0, 1.03],
                                  [1.03, 0, 1.03, 1],
@@ -402,12 +421,10 @@ class localizacion(movimiento):
                 roy = 0.05
                 rotheta = 0.573
                 Rk = 0.1**2
-
                 mu, sigma, distancia = self.localizacion_probabilistica(mapa, rox, roy, rotheta, Rk)
-
-                self.f.write(str(i)+" "+str(mu[0][0])+" "+str(mu[1][0])+" "+str(mu[2][0])+" "+str(sigma[0][0])+" "+str(sigma[0][1])+" "+str(sigma[0][2])+" "+str(sigma[1][0])+" "+str(sigma[1][1])+" "+str(sigma[1][2])+" "+str(sigma[2][0])+" "+str(sigma[2][1])+" "+str(sigma[2][2])+" "+str(self.posicion_robot[0][0])+" "+str(self.posicion_robot[1][0])+" "+str(self.posicion_robot[2][0])+" "+str(self.posicion_robot[3][0])+" "+str(distancia)+"\n")
-                i = i + 1
-
+                self.f.write(str(mu[0][0])+" "+str(mu[1][0])+" "+str(mu[2][0])+" "+str(sigma[0][0])+" "+str(sigma[0][1])+" "+str(sigma[0][2])+" "+str(sigma[1][0])+" "+str(sigma[1][1])+" "+str(sigma[1][2])+" "+str(sigma[2][0])+" "+str(sigma[2][1])+" "+str(sigma[2][2])+" "+str(self.posicion_robot[0][0])+" "+str(self.posicion_robot[1][0])+" "+str(self.posicion_robot[2][0])+" "+str(self.posicion_robot[3][0])+" "+str(distancia)+"\n")
+                """
+            self.t.stop()
             self.fin_escribir_fichero = True
 
         self.f = open(nombre_fichero,"w")
@@ -423,9 +440,9 @@ class localizacion(movimiento):
         self.f.close()
 
 class navegacion(localizacion):
-    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion):
-        localizacion.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion)
-
+    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion, nav_sonar, nav_sensor_color):
+        localizacion.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas, posicion, nav_sonar, nav_sensor_color)
+ 
     def coordenadas_global_a_robot(self, posicion_robot, punto_global):
         R = np.array([[cos(posicion_robot[3][0]), -sin(posicion_robot[3][0]), 0],
                       [sin(posicion_robot[3][0]), cos(posicion_robot[3][0]), 0],
@@ -443,14 +460,14 @@ class navegacion(localizacion):
         resultado = T @ p
 
         return resultado[:3]
+   
 
-    def navegacion_reactiva_campos_virtuales(self, punto_destino):
+    def navegacion_reactiva_campos_virtuales(self, objetivo, KA, KR):
         vector_resultante = np.array([0.0, 0.0, 0.0])
-        KA = 1.0
-        KR = 4.0
 
         while 1:
-            vector_hasta_destino = self.coordenadas_global_a_robot(self.odometria("RK_4"), punto_destino)
+            vector_hasta_destino = self.coordenadas_global_a_robot(self.odometria("RK_2"), objetivo)
+
             modulo = sqrt(vector_hasta_destino[0].T @ vector_hasta_destino[0])
             if (modulo <= 0.05):
                 break
@@ -489,13 +506,12 @@ class navegacion(localizacion):
 
         for punto in puntos_objetivos:
             while 1:
-                posicion_robot = self.odometria("RK_4")
+                posicion_robot = self.odometria("RK2")
                 vector_hasta_destino[0] = punto[0] - posicion_robot[0][0]
                 vector_hasta_destino[1] = punto[1] - posicion_robot[1][0]
                 vector_hasta_destino[2] = punto[2] - posicion_robot[2][0]
 
                 modulo = sqrt(vector_hasta_destino @ vector_hasta_destino)
-
                 if (modulo <= 0.05):
                     break
 
@@ -523,7 +539,6 @@ class navegacion(localizacion):
                     w = -pi
 
                 self.correr(0.2, w)
-
         self.parar()
 
 
