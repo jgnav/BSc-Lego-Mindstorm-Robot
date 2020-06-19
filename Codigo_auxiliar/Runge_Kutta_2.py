@@ -57,11 +57,11 @@ class sensores_y_bateria:
         return self._color.rgb
 
 class movimiento:
-    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas):
+    def __init__(self, motor_izquierdo, motor_derecho, radio_rueda, separacion_ruedas):
         self._motor_izquierdo = Motor(motor_izquierdo)
         self._motor_derecho = Motor(motor_derecho)
         self._dos_motores = MoveTank(motor_izquierdo, motor_derecho)
-        self._radio = diametro_rueda/2
+        self._radio = radio_rueda
         self._sruedas = separacion_ruedas
 
     def _SpeedRadPS(self, value):
@@ -124,9 +124,8 @@ class movimiento:
 
 
 class odometria(movimiento):
-    def __init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas):
-        movimiento.__init__(self, motor_izquierdo, motor_derecho, diametro_rueda, separacion_ruedas)
-        self._perimetro_rueda = 2*pi*self._radio
+    def __init__(self, motor_izquierdo, motor_derecho, radio_rueda, separacion_ruedas):
+        movimiento.__init__(self, motor_izquierdo, motor_derecho, radio_rueda, separacion_ruedas)
         self._tiempo_espera = 0.01
         self._posicion_robot = [0.0, 0.0, 0.0, 0.0]
         self._odometria_activa = False
