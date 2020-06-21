@@ -20,16 +20,32 @@ s = sensores_y_bateria(sonar = INPUT_1, sensor_color = INPUT_4)
 o = localizacion(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, radio_rueda = 0.028, separacion_ruedas = 0.120, posicion = posicion_inicial, loc_sonar = INPUT_1, loc_sensor_color = INPUT_4)
 n = navegacion(motor_izquierdo = OUTPUT_B, motor_derecho = OUTPUT_A, radio_rueda = 0.028, separacion_ruedas = 0.120, posicion = posicion_inicial, nav_sonar = INPUT_1, nav_sensor_color = INPUT_4)
 
+KW = 1.5
+l = 0.5
+waypoints = np.array([[0, l, 0.0], 
+                      [l, l, 0.0], 
+                      [l, 2*l, 0.0], 
+                      [0, 2*l, 0.0],
+                      [0, l, 0.0],
+                      [l, l, 0.0],
+                      [l, 0, 0.0],
+                      [0, 0, 0.0]])
+n.navegacion_planificada(waypoints, KW)
 
-n.empezar_fichero("asdf.txt", 0.01, "tiempo", "odometria", modo = "euler")
 
-for i in range(0, 16): #16
-    m.correr_tiempo(0.08, 0, 2, True)
-    m.correr_tiempo(0.047, -pi/4, 1.93, True)
-
-n.parar_fichero()
-
-
+"""
+KA = 1
+KR = 10
+offxs = -0.09
+offys = 0
+offphis = 0
+rTs = np.array([[cos(offphis), -sin(offphis), 0.0, offxs],
+                [sin(offphis), cos(offphis), 0.0, offys],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0]])
+punto_destino = np.array([[1.0], [1.0], [0.0]])
+n.navegacion_reactiva_campos_virtuales(punto_destino, rTs, KA, KR)
+"""
 
 """
 mapa = np.array([[0, 1.03, 0, 0],

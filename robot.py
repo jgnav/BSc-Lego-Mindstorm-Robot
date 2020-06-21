@@ -467,26 +467,33 @@ class navegacion(localizacion):
                     w = -pi
 
                 self.correr(0.2, w)
+
         self.parar()
 
-    def navegacion_reactiva_campos_virtuales(self, objetivo, KA, KR):
+    def navegacion_reactiva_campos_virtuales(self, objetivo, rTs, KA, KR):
         vector_resultante = np.array([0.0, 0.0, 0.0])
 
         while 1:
             vector_hasta_destino = self.coordenadas_global_a_robot(self.odometria("RK4"), objetivo)
+            vector_de_repulsion = np.array([[0.0], [0.0], [0.0]])
             
             modulo = sqrt(vector_hasta_destino[0].T @ vector_hasta_destino[0])
             if (modulo <= 0.05):
                 break
 
-            if (self.s.distancia_sonar - 0.09) > 0.45:
-                distancia_obstaculo = 0
-            else:
-                distancia_obstaculo = 0.45 - (self.s.distancia_sonar - 0.09)
+            obstaculo = rTs @ np.array([[self.s.distancia_sonar], [0.0], [0.0], [1.0]])
+            modulo = sqrt(obstaculo[:3][0].T @ obstaculo[:3][0])
 
-            vector_resultante[0] = KA * vector_hasta_destino[0][0] - KR * distancia_obstaculo
-            vector_resultante[1] = KA * vector_hasta_destino[1][0]
-            vector_resultante[2] = KA * vector_hasta_destino[2][0]
+            if modulo > 0.45:
+                vector_de_repulsion[0][0] = 0.0
+                vector_de_repulsion[1][0] = 0.0
+                vector_de_repulsion[2][0] = 0.0
+            else:
+                vector_de_repulsion= ((0.45 - modulo) / 0.45) * obstaculo
+
+            vector_resultante[0] = KA * vector_hasta_destino[0][0] - KR * vector_de_repulsion[0][0]
+            vector_resultante[1] = KA * vector_hasta_destino[1][0] - KR * vector_de_repulsion[1][0]
+            vector_resultante[2] = KA * vector_hasta_destino[2][0] - KR * vector_de_repulsion[2][0]
 
             v = 0.2 * vector_resultante[0]
             w = 2 * vector_resultante[1]
@@ -502,7 +509,7 @@ class navegacion(localizacion):
                 w = -pi
 
             self.correr(v, w)
-
+            
         self.parar()
 
     #Guardar datos
